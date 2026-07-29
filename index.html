@@ -143,10 +143,13 @@ TALKS.forEach((tk,i)=>{
 const cv=document.getElementById("g"), ctx=cv.getContext("2d");
 let W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
 let cam={x:0,y:0,s:1}, target={s:1};
-function resize(){ W=innerWidth; H=innerHeight;
+function resize(){ const de=document.documentElement;
+  W=de.clientWidth||innerWidth||1280; H=de.clientHeight||innerHeight||800;
   cv.style.width=W+"px"; cv.style.height=H+"px";
   cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); }
-addEventListener("resize",resize); resize();
+addEventListener("resize",resize);
+try{ new ResizeObserver(resize).observe(document.documentElement); }catch(e){}
+resize();
 function toScreen(p){ return {x:(p.x-cam.x)*cam.s+W/2, y:(p.y-cam.y)*cam.s+H/2}; }
 function toWorld(sx,sy){ return {x:(sx-W/2)/cam.s+cam.x, y:(sy-H/2)/cam.s+cam.y}; }
 
