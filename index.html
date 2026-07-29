@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>The Agent-Engineering Canon — a map</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12161c; --line:#232a33; --ink:#e6edf3; --dim:#8b949e; --gold:#e3b341;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif;overflow:hidden}
+  #g{position:fixed;inset:0;display:block;cursor:grab}
+  #g.drag{cursor:grabbing}
+
+  .head{position:fixed;top:22px;left:26px;z-index:5;pointer-events:none;max-width:70%}
+  .head h1{margin:0;font-size:23px;letter-spacing:.2px;font-weight:800}
+  .head h1 b{color:var(--gold)}
+  .head p{margin:5px 0 0;font-size:13px;color:var(--dim);line-height:1.4}
+  .head .by{margin-top:9px;font-size:12px;color:var(--dim)}
+  .head .by a{color:var(--gold);text-decoration:none;font-weight:700;pointer-events:auto}
+
+  .search{position:fixed;top:24px;right:26px;z-index:5}
+  .search input{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    padding:9px 13px;border-radius:9px;font-size:13px;width:190px;outline:none}
+  .search input:focus{border-color:var(--gold)}
+
+  .legend{position:fixed;left:26px;bottom:22px;z-index:5;display:flex;flex-wrap:wrap;gap:6px 14px;max-width:52%}
+  .legend .l{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);cursor:pointer;
+    padding:3px 6px;border-radius:6px;transition:.15s}
+  .legend .l:hover{background:var(--panel);color:var(--ink)}
+  .legend .l.off{opacity:.35}
+  .legend .dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 8px currentColor}
+
+  .ctrl{position:fixed;right:26px;bottom:22px;z-index:5;display:flex;gap:8px}
+  .ctrl button{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    padding:9px 13px;border-radius:9px;font-size:12.5px;cursor:pointer;transition:.15s;font-weight:600}
+  .ctrl button:hover{border-color:var(--gold);color:var(--gold)}
+
+  .panel{position:fixed;top:0;right:0;height:100%;width:360px;max-width:88vw;background:var(--panel);
+    border-left:1px solid var(--line);z-index:6;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    padding:26px 24px;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+  .panel.open{transform:none}
+  .panel .close{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--dim);
+    font-size:22px;cursor:pointer;line-height:1}
+  .panel .kick{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:10px}
+  .panel h2{margin:0 0 6px;font-size:19px;line-height:1.25;font-weight:800}
+  .panel .meta{font-size:13px;color:var(--dim);margin:0 0 16px}
+  .panel .why{font-size:14.5px;line-height:1.55;color:var(--ink);margin:0 0 20px}
+  .panel a.watch{display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#1a1408;
+    text-decoration:none;font-weight:800;padding:11px 16px;border-radius:9px;font-size:14px}
+  .panel a.watch:hover{filter:brightness(1.08)}
+  .panel .step{margin-top:22px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);padding-top:14px}
+
+  .hint{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:4;font-size:12px;color:var(--dim);
+    background:rgba(18,22,28,.7);padding:6px 14px;border-radius:20px;border:1px solid var(--line);
+    opacity:1;transition:opacity 1s;pointer-events:none}
+  .hint.gone{opacity:0}
+  @media (max-width:640px){ .head{max-width:88%} .legend{max-width:90%} .search input{width:130px} }
+</style>
+</head>
+<body>
+<canvas id="g"></canvas>
+
+<div class="head">
+  <h1>The Agent-Engineering <b>Canon</b></h1>
+  <p>18 talks that actually teach you to build agents — the ones the people who build them keep pointing to. Follow the gold path in watch order, or click any node.</p>
+  <div class="by">collected by <a href="https://github.com/Archive228/agent-engineering-canon" target="_blank" rel="noopener">@ArchiveExplorer</a> · sources are talks only</div>
+</div>
+
+<div class="search"><input id="q" placeholder="search speaker or topic…" autocomplete="off"></div>
+
+<div class="legend" id="legend"></div>
+
+<div class="ctrl">
+  <button id="play">▶ play the path</button>
+  <button id="reset">reset view</button>
+</div>
+
+<div class="hint" id="hint">drag to pan · scroll to zoom · click a node</div>
+
+<div class="panel" id="panel">
+  <button class="close" id="close">×</button>
+  <div id="pbody"></div>
+</div>
+
+<script>
+"use strict";
+// ---------- data (18 real talks, verified) ----------
+const THEMES = [
+  {id:"foundations", name:"Foundations",        color:"#79c0ff", desc:"how to even think about building on LLMs"},
+  {id:"effective",   name:"Effective agents",   color:"#3fb950", desc:"when to use agents, when not to"},
+  {id:"harness",     name:"The harness",        color:"#e3b341", desc:"keeping an agent on task for hours"},
+  {id:"context",     name:"Context engineering",color:"#d2a8ff", desc:"less context, not more"},
+  {id:"memory",      name:"Memory",             color:"#ff9e64", desc:"beyond the context window"},
+  {id:"coding",      name:"Coding agents",      color:"#56d4dd", desc:"how the people who build them work"},
+  {id:"evals",       name:"Evals & reasoning",  color:"#f778ba", desc:"the skill nobody teaches"},
+  {id:"deeper",      name:"Go deeper",          color:"#9aa4b2", desc:"foundations from scratch"},
+];
+const TALKS = [
+  {t:"foundations", title:"Software Is Changing (Again)", who:"Andrej Karpathy", ch:"Y Combinator", dur:"~40m", id:"LCEmiRjPEtQ", why:"The Software 3.0 / decade-of-agents framing — why the scaffolding around the model is the job now."},
+  {t:"foundations", title:"What You MUST Know About AI Engineering", who:"Chip Huyen", ch:"The MAD Podcast", dur:"", id:"p7F4f42iZ-c", why:"A systems view of the whole AI-engineering stack, from the author of AI Engineering."},
+  {t:"effective", title:"How We Build Effective Agents", who:"Barry Zhang", ch:"Anthropic · AI Engineer", dur:"~15m", id:"D7_ipDqhtwk", why:"Don't over-apply agents, keep them simple, think from the agent's point of view."},
+  {t:"effective", title:"12-Factor Agents", who:"Dexter Horthy", ch:"HumanLayer · AI Engineer", dur:"~17m", id:"8kMaTybvDUw", why:"The manifesto for agents that don't fall over in production."},
+  {t:"effective", title:"Don't Build Agents, Build Skills Instead", who:"Barry Zhang & Mahesh Murag", ch:"Anthropic · AI Engineer", dur:"~16m", id:"CEvIs9y1uog", why:"Composable folders of procedural knowledge, loaded on demand, beat bespoke agents."},
+  {t:"harness", title:"Build Agents That Run for Hours", who:"Ash Prabaker & Andrew Wilson", ch:"Anthropic · AI Engineer", dur:"~1h15m", id:"mR-WAvEPRwE", why:"Context rot, generator–evaluator loops, clean multi-session handoff. The most on-theme talk here."},
+  {t:"harness", title:"Context Engineering Our Way to Long-Horizon Agents", who:"Harrison Chase", ch:"LangChain · Sequoia", dur:"", id:"vtugjs2chdA", why:"Why long-horizon agents need a harness and feedback loops, not just a bigger model."},
+  {t:"harness", title:"Advanced Context Engineering for Agents", who:"Dexter Horthy", ch:"Context Engineering SF", dur:"", id:"VvkhYWFWaKI", why:"Subagent design and compaction for shipping large features without the agent going off the rails."},
+  {t:"context", title:"Context Engineering for Agents", who:"Lance Martin", ch:"LangChain · Latent Space", dur:"~1h", id:"_IlTcWciEC4", why:"The four moves — write, select, compress, isolate — for context that floods in from tool calls."},
+  {t:"context", title:"Context Engineering for AI Agents (with Manus)", who:"Yichao Ji & Lance Martin", ch:"Manus · LangChain", dur:"~1h", id:"6_BcCthVvb8", why:"Production lessons: KV-cache stability, masking tools instead of removing them, filesystem-as-context."},
+  {t:"memory", title:"Stateful Agents", who:"Charles Packer", ch:"Letta / MemGPT · AI Engineer", dur:"~1h20m", id:"E0k9Ppq6yXY", why:"LLM-as-OS: core vs archival memory, managing long-term memory the model can't hold."},
+  {t:"memory", title:"Stop Using RAG as Memory", who:"Zep AI", ch:"Zep AI", dur:"", id:"ZNqGFsTyhvg", why:"Why retrieval isn't memory, and what an actual memory layer looks like."},
+  {t:"coding", title:"Claude Code & the Evolution of Agentic Coding", who:"Boris Cherny", ch:"Anthropic · AI Engineer", dur:"~18m", id:"Lue8K2jqfKk", why:"From the person who built Claude Code, how the tool and the workflow actually evolved."},
+  {t:"coding", title:"Engineering Practices That Make Coding Agents Work", who:"Simon Willison", ch:"The Pragmatic Engineer", dur:"~28m", id:"owmJyKVu5f8", why:"Concrete day-to-day habits that separate 'the agent helps' from 'the agent ships.'"},
+  {t:"evals", title:"Why AI Evals Are the Hottest New Skill", who:"Hamel Husain & Shreya Shankar", ch:"Lenny's Podcast", dur:"", id:"BsWxPI9UM4c", why:"If you can't measure it, you can't ship it — evals as the real bottleneck."},
+  {t:"evals", title:"AI Progress Is About to Rapidly Accelerate", who:"Sholto Douglas & Trenton Bricken", ch:"Anthropic · Dwarkesh", dur:"~9m clip", id:"UeI29-AdhQI", why:"Why RL on LLMs finally works and how models actually reason inside."},
+  {t:"deeper", title:"Stanford CS336: Language Modeling from Scratch", who:"Hashimoto & Liang", ch:"Stanford Online", dur:"", id:"SQ3fZ1sAqXI", why:"Build an LLM end-to-end — the most rigorous public course on what's inside the models you build on."},
+  {t:"deeper", title:"Stanford CS25 V5: LLM Reasoning", who:"Denny Zhou", ch:"Google DeepMind · Stanford", dur:"~1h", id:"ebnX5Ur1hBk", why:"Chain-of-thought, self-consistency, and the limits of SFT, from the researcher behind them."},
+];
+
+// ---------- build graph ----------
+const themeColor = Object.fromEntries(THEMES.map(t=>[t.id,t.color]));
+const nodes=[], edges=[];
+const themeNode={};
+THEMES.forEach((th,i)=>{
+  const ang = -Math.PI/2 + i*(Math.PI*2/THEMES.length);
+  const n={kind:"theme",id:th.id,label:th.name,color:th.color,desc:th.desc,r:15,
+    x:Math.cos(ang)*160+(Math.random()-.5)*30, y:Math.sin(ang)*160+(Math.random()-.5)*30, vx:0,vy:0,order:i};
+  themeNode[th.id]=n; nodes.push(n);
+});
+// spine: theme -> next theme (the watch path)
+for(let i=0;i<THEMES.length-1;i++) edges.push({a:themeNode[THEMES[i].id],b:themeNode[THEMES[i+1].id],spine:true});
+// talks attach to their theme
+TALKS.forEach((tk,i)=>{
+  const th=themeNode[tk.t];
+  const n={kind:"talk",color:themeColor[tk.t],r:8.5,label:tk.title,data:tk,
+    x:th.x+(Math.random()-.5)*70, y:th.y+(Math.random()-.5)*70, vx:0,vy:0};
+  nodes.push(n); edges.push({a:th,b:n,spine:false});
+});
+
+// ---------- canvas / camera ----------
+const cv=document.getElementById("g"), ctx=cv.getContext("2d");
+let W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+let cam={x:0,y:0,s:1}, target={s:1};
+function resize(){ W=innerWidth; H=innerHeight;
+  cv.style.width=W+"px"; cv.style.height=H+"px";
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener("resize",resize); resize();
+function toScreen(p){ return {x:(p.x-cam.x)*cam.s+W/2, y:(p.y-cam.y)*cam.s+H/2}; }
+function toWorld(sx,sy){ return {x:(sx-W/2)/cam.s+cam.x, y:(sy-H/2)/cam.s+cam.y}; }
+
+// ---------- force sim ----------
+let alpha=1;
+function tick(){
+  alpha*=0.994; if(alpha<0.02) alpha=0.02;
+  const k=alpha;
+  // repulsion
+  for(let i=0;i<nodes.length;i++){ const a=nodes[i];
+    for(let j=i+1;j<nodes.length;j++){ const b=nodes[j];
+      let dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy+0.01; let d=Math.sqrt(d2);
+      const rep=(a.kind==="theme"||b.kind==="theme")?2600:1400;
+      let f=rep/d2; if(d<1){d=1;} let fx=dx/d*f, fy=dy/d*f;
+      a.vx+=fx*k; a.vy+=fy*k; b.vx-=fx*k; b.vy-=fy*k;
+    }}
+  // springs
+  for(const e of edges){ const a=e.a,b=e.b;
+    let dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)+.01;
+    const rest=e.spine?150:56; const str=e.spine?0.02:0.035;
+    let f=(d-rest)*str; let fx=dx/d*f, fy=dy/d*f;
+    a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy;
+  }
+  // gentle centering
+  for(const n of nodes){ n.vx+=(-n.x)*0.0009; n.vy+=(-n.y)*0.0009; }
+  for(const n of nodes){ if(n===dragNode) continue;
+    n.vx*=0.86; n.vy*=0.86; n.x+=n.vx; n.y+=n.vy; }
+}
+
+// ---------- interaction state ----------
+let hoverNode=null, selNode=null, dragNode=null, dragging=false, last={x:0,y:0}, moved=false;
+const offThemes=new Set();
+let pulse=null; // {i, t} for play-the-path animation
+
+function nodeAt(sx,sy){
+  const w=toWorld(sx,sy); let best=null,bd=1e9;
+  for(const n of nodes){ if(offThemes.has(n.kind==="theme"?n.id:n.data.t)) continue;
+    const dx=n.x-w.x, dy=n.y-w.y, d=Math.hypot(dx,dy);
+    const rad=(n.r+7)/1; if(d<rad+ (12/cam.s) && d<bd){bd=d;best=n;} }
+  return best;
+}
+
+cv.addEventListener("pointerdown",e=>{
+  cv.setPointerCapture(e.pointerId); last={x:e.clientX,y:e.clientY}; moved=false;
+  const n=nodeAt(e.clientX,e.clientY);
+  if(n){ dragNode=n; } else { dragging=true; cv.classList.add("drag"); }
+});
+cv.addEventListener("pointermove",e=>{
+  if(dragNode){ const w=toWorld(e.clientX,e.clientY); dragNode.x=w.x; dragNode.y=w.y; dragNode.vx=dragNode.vy=0; alpha=Math.max(alpha,.3); moved=true; hideHint(); return; }
+  if(dragging){ cam.x-=(e.clientX-last.x)/cam.s; cam.y-=(e.clientY-last.y)/cam.s; last={x:e.clientX,y:e.clientY}; moved=true; hideHint(); return; }
+  const n=nodeAt(e.clientX,e.clientY); hoverNode=n; cv.style.cursor=n?"pointer":"grab";
+});
+cv.addEventListener("pointerup",e=>{
+  if(dragNode && !moved) select(dragNode);
+  else if(dragging && !moved) closePanel();
+  dragNode=null; dragging=false; cv.classList.remove("drag");
+});
+cv.addEventListener("wheel",e=>{ e.preventDefault(); hideHint();
+  const w=toWorld(e.clientX,e.clientY);
+  const f=Math.exp(-e.deltaY*0.0016); cam.s=Math.max(0.35,Math.min(3.2,cam.s*f));
+  const w2=toWorld(e.clientX,e.clientY); cam.x+=w.x-w2.x; cam.y+=w.y-w2.y;
+},{passive:false});
+
+// ---------- panel ----------
+const panel=document.getElementById("panel"), pbody=document.getElementById("pbody");
+function select(n){ selNode=n;
+  if(n.kind==="theme"){
+    pbody.innerHTML=`<div class="kick" style="color:${n.color}">stage ${n.order+1} of ${THEMES.length}</div>
+      <h2>${n.label}</h2><div class="meta">${TALKS.filter(t=>t.t===n.id).length} talks</div>
+      <div class="why">${n.desc}. click the nodes branching off this stage to open each talk.</div>
+      <div class="step">the gold path runs foundations → deeper. hit “play the path” to walk it.</div>`;
+  } else {
+    const d=n.data, th=THEMES.find(t=>t.id===d.t);
+    pbody.innerHTML=`<div class="kick" style="color:${th.color}">${th.name}</div>
+      <h2>${d.title}</h2>
+      <div class="meta">${d.who} · ${d.ch}${d.dur?" · "+d.dur:""}</div>
+      <div class="why">${d.why}</div>
+      <a class="watch" href="https://www.youtube.com/watch?v=${d.id}" target="_blank" rel="noopener">▶ watch on YouTube</a>
+      <div class="step">source: a public talk, credited above. part of the canon — full list on <a href="https://github.com/Archive228/agent-engineering-canon" target="_blank" style="color:${th.color}">GitHub</a>.</div>`;
+  }
+  panel.classList.add("open"); hideHint();
+}
+function closePanel(){ panel.classList.remove("open"); selNode=null; }
+document.getElementById("close").onclick=closePanel;
+
+// ---------- legend ----------
+const legend=document.getElementById("legend");
+THEMES.forEach(th=>{
+  const el=document.createElement("div"); el.className="l";
+  el.innerHTML=`<span class="dot" style="color:${th.color};background:${th.color}"></span>${th.name}`;
+  el.onclick=()=>{ if(offThemes.has(th.id)){offThemes.delete(th.id);el.classList.remove("off");}
+    else{offThemes.add(th.id);el.classList.add("off");} alpha=Math.max(alpha,.2); };
+  legend.appendChild(el);
+});
+
+// ---------- search ----------
+let query="";
+document.getElementById("q").addEventListener("input",e=>{ query=e.target.value.trim().toLowerCase(); });
+function matches(n){ if(!query) return true;
+  if(n.kind==="theme") return n.label.toLowerCase().includes(query);
+  const d=n.data; return (d.title+" "+d.who+" "+d.ch+" "+d.why).toLowerCase().includes(query); }
+
+// ---------- play the path ----------
+document.getElementById("play").onclick=()=>{ pulse={i:0,t:0}; alpha=Math.max(alpha,.15); hideHint(); };
+document.getElementById("reset").onclick=()=>{ cam={x:0,y:0,s:1}; alpha=Math.max(alpha,.4); closePanel(); };
+
+// ---------- render ----------
+let intro=0;
+function draw(){
+  tick();
+  if(intro<1) intro=Math.min(1,intro+0.02);
+  ctx.clearRect(0,0,W,H);
+  // subtle vignette
+  const g=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.2,W/2,H/2,Math.max(W,H)*0.75);
+  g.addColorStop(0,"rgba(20,26,34,0.35)"); g.addColorStop(1,"rgba(6,8,11,0)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  const dim=(n)=> (query && !matches(n)) || offThemes.has(n.kind==="theme"?n.id:n.data.t);
+
+  // edges
+  for(const e of edges){
+    const a=toScreen(e.a), b=toScreen(e.b);
+    const off= offThemes.has(e.a.kind==="theme"?e.a.id:e.a.data.t) || offThemes.has(e.b.kind==="theme"?e.b.id:e.b.data.t);
+    if(off) continue;
+    if(e.spine){
+      ctx.strokeStyle="rgba(227,179,65,0.55)"; ctx.lineWidth=2.2*cam.s*intro;
+      ctx.shadowColor="rgba(227,179,65,0.6)"; ctx.shadowBlur=10;
+    } else {
+      const c=e.b.color; ctx.strokeStyle="rgba(255,255,255,0.10)"; ctx.lineWidth=1.1*cam.s; ctx.shadowBlur=0;
+    }
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  ctx.shadowBlur=0;
+
+  // play-the-path pulse
+  if(pulse){
+    pulse.t+=0.018;
+    if(pulse.t>=1){ pulse.t=0; pulse.i++; if(pulse.i>=THEMES.length-1){ pulse=null; } }
+    if(pulse){
+      const a=toScreen(themeNode[THEMES[pulse.i].id]), b=toScreen(themeNode[THEMES[pulse.i+1].id]);
+      const px=a.x+(b.x-a.x)*pulse.t, py=a.y+(b.y-a.y)*pulse.t;
+      ctx.fillStyle="#fff"; ctx.shadowColor=var_gold; ctx.shadowBlur=22;
+      ctx.beginPath(); ctx.arc(px,py,5.5,0,7); ctx.fill(); ctx.shadowBlur=0;
+      if(!selNode||selNode.kind!=="theme"||selNode.order!==pulse.i) select(themeNode[THEMES[pulse.i].id]);
+    }
+  }
+
+  // nodes
+  for(const n of nodes){
+    const s=toScreen(n); const faded=dim(n);
+    const isHot = n===hoverNode || n===selNode;
+    const r=(n.r*(n.kind==="theme"?1:1))*cam.s*(0.5+0.5*intro)*(isHot?1.35:1);
+    ctx.globalAlpha=faded?0.16:1;
+    // glow
+    ctx.shadowColor=n.color; ctx.shadowBlur=isHot?26:(n.kind==="theme"?16:9);
+    ctx.fillStyle=n.color;
+    ctx.beginPath(); ctx.arc(s.x,s.y,r,0,7); ctx.fill();
+    // inner core
+    ctx.shadowBlur=0; ctx.fillStyle= n.kind==="theme"?"rgba(11,13,16,0.55)":"rgba(255,255,255,0.85)";
+    ctx.beginPath(); ctx.arc(s.x,s.y,r*(n.kind==="theme"?0.45:0.3),0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    // labels
+    if(n.kind==="theme"){
+      ctx.fillStyle=faded?"rgba(230,237,243,0.25)":"#e6edf3"; ctx.font=`700 ${13*Math.max(.8,Math.min(1.4,cam.s))}px -apple-system,Inter,sans-serif`;
+      ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillText(n.label.toUpperCase(), s.x, s.y+r+6);
+    } else if((cam.s>1.15 || isHot || (query&&matches(n))) && !faded){
+      ctx.fillStyle= isHot?"#fff":"rgba(230,237,243,0.72)"; ctx.font=`600 ${11.5*Math.max(.85,Math.min(1.3,cam.s))}px -apple-system,Inter,sans-serif`;
+      ctx.textAlign="center"; ctx.textBaseline="top";
+      const label=n.label.length>34?n.label.slice(0,32)+"…":n.label;
+      ctx.fillText(label, s.x, s.y+r+5);
+    }
+  }
+  requestAnimationFrame(draw);
+}
+const var_gold="rgba(227,179,65,0.9)";
+// initial fit
+cam={x:0,y:0,s:0.92};
+let hintTimer=setTimeout(hideHint,6000);
+function hideHint(){ const h=document.getElementById("hint"); if(h) h.classList.add("gone"); }
+requestAnimationFrame(draw);
+// settle the layout a bit before first paint feel
+for(let i=0;i<80;i++) tick();
+</script>
+</body>
+</html>
